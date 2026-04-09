@@ -1,95 +1,87 @@
-import express from "express";
+import express from 'express';
+import { checkAuth } from '../../middlewares/checkAuth';
+import { USER_ROLES } from '../../../enums/user';
+import { UserController } from './user.controller';
+import validateRequest from '../../middlewares/validateRequest';
+import fileUploadHandler from '../../middlewares/fileUploadHandler';
+import { UserValidation } from './user.validation';
 
 const router = express.Router();
 
-import { checkAuth } from "../../middlewares/checkAuth";
-import { USER_ROLES } from "../../../enums/user";
-import { UserController } from "./user.controller";
-import validateRequest from "../../middlewares/validateRequest";
-import fileUploadHandler from "../../middlewares/fileUploadHandler";
-import { UserValidation } from "./user.validation";
-
-// ================= MY PROFILE =================
+// Own Profile 
 router
-.route("/my-profile")
-.get(
-checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER, USER_ROLES.ADMIN),
-UserController.getMyProfile,
-)
-.patch(
-checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER, USER_ROLES.ADMIN),
-fileUploadHandler,
-validateRequest(UserValidation.updateMyProfileSchema),
-UserController.updateMyProfile,
+  .route('/my-profile')
+  .get(
+    checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER, USER_ROLES.ADMIN),
+    UserController.getMyProfile,
+  )
+  .patch(
+    checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER, USER_ROLES.ADMIN),
+    fileUploadHandler,
+    validateRequest(UserValidation.updateMyProfileSchema),
+    UserController.updateMyProfile,
+  );
+
+// FCM Token 
+router.patch(
+  '/fcm-token',
+  checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER),
+  validateRequest(UserValidation.updateFcmTokenSchema),
+  UserController.updateFcmToken,
 );
 
-// ================= ADMIN: ALL USERS =================
-router
-.route("/users")
-.get(
-checkAuth(USER_ROLES.ADMIN),
-UserController.getAllUsers
+router.delete(
+  '/fcm-token',
+  checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER),
+  validateRequest(UserValidation.updateFcmTokenSchema),
+  UserController.removeFcmToken,
 );
 
-// ================= ADMIN: SINGLE USER =================
-router
-.route("/users/:id")
-.get(
-checkAuth(USER_ROLES.ADMIN),
-validateRequest(UserValidation.getUserByIdSchema),
-UserController.getUserById
-)
-.delete(
-checkAuth(USER_ROLES.ADMIN),
-validateRequest(UserValidation.deleteUserSchema),
-UserController.deleteUser
-);
-
-// ================= ADMIN: UPDATE USER STATUS =================
-router
-.route("/users/:id/status")
-.patch(
-checkAuth(USER_ROLES.ADMIN),
-validateRequest(UserValidation.updateUserStatusSchema),
-UserController.updateUserStatus
-);
-
-// ================= ADMIN: BLOCK / UNBLOCK USER =================
-router
-.route("/users/:id/block")
-.patch(
-checkAuth(USER_ROLES.ADMIN),
-validateRequest(UserValidation.blockUnblockUserSchema),
-UserController.blockUnblockUser
-);
-
-
-
-
-
-// CLIENT: browse all providers to start a new chat
+// ── Messaging: browse users
 router.get(
-  '/providers',
+  '/caregivers',
   checkAuth(USER_ROLES.CLIENT, USER_ROLES.ADMIN),
-  UserController.getAllProviders,
+  UserController.getAllCaregivers,
 );
 
-// PROVIDER: browse all clients
 router.get(
   '/clients',
   checkAuth(USER_ROLES.CAREGIVER, USER_ROLES.ADMIN),
   UserController.getAllClients,
 );
 
-// ADMIN: all users with optional role filter
+// ── Admin: User Management
 router.get(
-  '/all',
+  '/users',
   checkAuth(USER_ROLES.ADMIN),
   UserController.getAllUsers,
 );
 
+router
+  .route('/users/:id')
+  .get(
+    checkAuth(USER_ROLES.ADMIN),
+    validateRequest(UserValidation.getUserByIdSchema),
+    UserController.getUserById,
+  )
+  .delete(
+    checkAuth(USER_ROLES.ADMIN),
+    validateRequest(UserValidation.deleteUserSchema),
+    UserController.deleteUser,
+  );
 
+router.patch(
+  '/users/:id/status',
+  checkAuth(USER_ROLES.ADMIN),
+  validateRequest(UserValidation.updateUserStatusSchema),
+  UserController.updateUserStatus,
+);
 
-
+router.patch(
+  '/users/:id/block',
+  checkAuth(USER_ROLES.ADMIN),
+  validateRequest(UserValidation.blockUnblockUserSchema),
+  UserController.blockUnblockUser,
+);
 
 export const UserRoutes = router;

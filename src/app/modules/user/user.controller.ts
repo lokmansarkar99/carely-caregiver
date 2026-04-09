@@ -1,152 +1,76 @@
-import { Request, Response } from "express";
-import catchAsync from "../../../shared/catchAsync";
-import { UserService } from "./user.service";
-import sendResponse from "../../../shared/sendResponse";
-import { StatusCodes } from "http-status-codes";
+import { Request, Response } from 'express';
+import { StatusCodes } from 'http-status-codes';
+import catchAsync from '../../../shared/catchAsync';
+import sendResponse from '../../../shared/sendResponse';
+import { UserService } from './user.service';
 
-
-// ── Get My Profile ─────────────────────────────────
 const getMyProfile = catchAsync(async (req: Request, res: Response) => {
-const userId = req.user!.id
-const result = await UserService.getMyProfile(userId)
+  const result = await UserService.getMyProfile(req.user!.id);
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: 'Profile fetched', data: result });
+});
 
-sendResponse(res, {
-success: true,
-message: "Profile fetched successfully",
-statusCode: StatusCodes.OK,
-data: result
-})
-})
-
-// ── Update My Profile ──────────────────────────────
 const updateMyProfile = catchAsync(async (req: Request, res: Response) => {
-const userId = req.user!.id
-const payload = req.body
-const files = req.files
-const result = await UserService.updateMyProfile(userId, payload, files)
+  const result = await UserService.updateMyProfile(req.user!.id, req.body, req.files);
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: 'Profile updated', data: result });
+});
 
-sendResponse(res, {
-success: true,
-message: "Profile updated successfully",
-statusCode: StatusCodes.OK,
-data: result
-})
-})
+// Mobile app sends its FCM token after login
+const updateFcmToken = catchAsync(async (req: Request, res: Response) => {
+  const result = await UserService.addFcmToken(req.user!.id, req.body.fcmToken);
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: 'FCM token registered', data: null });
+});
 
+// Called on logout — body: { fcmToken }
+const removeFcmToken = catchAsync(async (req: Request, res: Response) => {
+  await UserService.removeFcmToken(req.user!.id, req.body.fcmToken);
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: 'FCM token removed', data: null });
+});
 
-
-// ── Admin: Get Single User ─────────────────────────
 const getUserById = catchAsync(async (req: Request, res: Response) => {
-const result = await UserService.getUserById(req.params.id as string)
+  const result = await UserService.getUserById(req.params.id as string);
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: 'User fetched', data: result });
+});
 
-sendResponse(res, {
-success: true,
-message: "User fetched successfully",
-statusCode: StatusCodes.OK,
-data: result
-})
-})
-
-// ── Admin: Update User Status ──────────────────────
 const updateUserStatus = catchAsync(async (req: Request, res: Response) => {
-const result = await UserService.updateUserStatus(req.params.id as string, req.body)
+  const result = await UserService.updateUserStatus(req.params.id as string, req.body);
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: `User status updated to ${req.body.status}`, data: result });
+});
 
-sendResponse(res, {
-success: true,
-message: "User status updated successfully",
-statusCode: StatusCodes.OK,
-data: result
-})
-})
-
-// ── Admin: Block / Unblock User ───────────────────
 const blockUnblockUser = catchAsync(async (req: Request, res: Response) => {
-const result = await UserService.blockUnblockUser(req.params.id as string, req.body)
+  const result = await UserService.blockUnblockUser(req.params.id as string, req.body);
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: `User ${req.body.isBlocked ? "blocked" : "unblocked"} successfully`, data: result });
+});
 
-sendResponse(res, {
-success: true,
-message: result.message,
-statusCode: StatusCodes.OK,
-data: null
-})
-})
-
-// ── Admin: Delete User ─────────────────────────────
 const deleteUser = catchAsync(async (req: Request, res: Response) => {
-const result = await UserService.deleteUser(req.params.id as string)
-
-sendResponse(res, {
-success: true,
-message: result.message,
-statusCode: StatusCodes.OK,
-data: null
-})
-})
-
-
-
-
-// ─── GET /api/v1/user/providers?search=&page=&limit= ─────────────────────────
-const getAllProviders = catchAsync(async (req: Request, res: Response) => {
-  const search = req.query.search as string | undefined;
-  const page   = Number(req.query.page)  || 1;
-  const limit  = Number(req.query.limit) || 20;
-
-  const result = await UserService.getAllProviders(search, page, limit);
-
-  sendResponse(res, {
-    statusCode: StatusCodes.OK,
-    success:    true,
-    message:    'Providers fetched successfully',
-    data:       result,
-  });
+  const result = await UserService.deleteUser(req.params.id as string);
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: 'User deleted successfully', data: result });
 });
 
-// ─── GET /api/v1/user/clients?search=&page=&limit= ───────────────────────────
-const getAllClients = catchAsync(async (req: Request, res: Response) => {
-  const search = req.query.search as string | undefined;
-  const page   = Number(req.query.page)  || 1;
-  const limit  = Number(req.query.limit) || 20;
-
-  const result = await UserService.getAllClients(search, page, limit);
-
-  sendResponse(res, {
-    statusCode: StatusCodes.OK,
-    success:    true,
-    message:    'Clients fetched successfully',
-    data:       result,
-  });
-});
-
-// ─── GET /api/v1/user/all?search=&role=&page=&limit= ─────────────────────────
 const getAllUsers = catchAsync(async (req: Request, res: Response) => {
-  const search = req.query.search as string | undefined;
-  const role   = req.query.role   as string | undefined;
-  const page   = Number(req.query.page)  || 1;
-  const limit  = Number(req.query.limit) || 20;
-
-  const result = await UserService.getAllUsers(search, role, page, limit);
-
-  sendResponse(res, {
-    statusCode: StatusCodes.OK,
-    success:    true,
-    message:    'Users fetched successfully',
-    data:       result,
-  });
+  const result = await UserService.getAllUsers(req.query as Record<string, unknown>);
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: 'Users fetched', data: result.data, meta: result.meta });
 });
 
+const getAllCaregivers = catchAsync(async (req: Request, res: Response) => {
+  const result = await UserService.getAllCaregivers(req.query as Record<string, unknown>);
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: 'Caregivers fetched', data: result.data, meta: result.meta });
+});
 
-
-
+const getAllClients = catchAsync(async (req: Request, res: Response) => {
+  const result = await UserService.getAllClients(req.query as Record<string, unknown>);
+  sendResponse(res, { statusCode: StatusCodes.OK, success: true, message: 'Clients fetched', data: result.data, meta: result.meta });
+});
 
 export const UserController = {
-getMyProfile,
-updateMyProfile,
-getUserById,
-updateUserStatus,
-blockUnblockUser,
-deleteUser,
-getAllUsers,
-getAllClients,
-getAllProviders,
-}
+  getMyProfile,
+  updateMyProfile,
+  updateFcmToken,
+  removeFcmToken,
+  getUserById,
+  updateUserStatus,
+  blockUnblockUser,
+  deleteUser,
+  getAllUsers,
+  getAllCaregivers,
+  getAllClients,
+};
