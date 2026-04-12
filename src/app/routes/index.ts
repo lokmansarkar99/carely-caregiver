@@ -6,6 +6,7 @@ import { UserRoutes } from "../modules/user/user.route";
 import { MessageRoutes } from "../modules/message/message.route";
 import { NotificationRoutes } from "../modules/notification/notification.route";
 import { CategoryRoutes } from "../modules/category/category.route";
+import { CaregiverProfileRoutes } from "../modules/caregiver-profile/caregiver-profile.route";
 
 
 
@@ -21,6 +22,8 @@ router.use("/message", MessageRoutes)
 router.use("/notification", NotificationRoutes)
 
 router.use("/categories", CategoryRoutes)
+
+router.use("/caregiver-profiles", CaregiverProfileRoutes)
 
 export default router;
 
