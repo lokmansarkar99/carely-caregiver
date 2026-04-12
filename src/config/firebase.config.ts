@@ -1,71 +1,59 @@
-import admin from 'firebase-admin';
-import config from '.';
+import admin        from 'firebase-admin';
+import config       from './index';
 import { errorLogger } from '../shared/logger';
 
-let firebaseInitialized = false;
+let initialized = false;
 
-/**
- * Call once in server.ts — initialises Firebase Admin SDK for FCM.
- * Safe to call even if FCM env vars are missing (skips silently).
- */
 export const initFirebase = (): void => {
-  if (
-    firebaseInitialized ||
-    !config.firebase.projectId ||
-    !config.firebase.privateKey ||
-    !config.firebase.clientEmail
-  ) {
-    if (!config.firebase.projectId) {
-      console.warn('[Firebase] FCM env vars not set — push notifications disabled.');
-    }
-    return;
-  }
+  if (initialized) return;
   try {
     admin.initializeApp({
       credential: admin.credential.cert({
-        projectId:   config.firebase.projectId,
-        privateKey:  config.firebase.privateKey,
-        clientEmail: config.firebase.clientEmail,
+        projectId:   config.firebase.projectId   as string,
+        clientEmail: config.firebase.clientEmail  as string,
+        privateKey:  (config.firebase.privateKey as string)?.replace(/\\n/g, '\n'),
       }),
     });
-    firebaseInitialized = true;
-    console.log('[Firebase] FCM initialised ✓');
-  } catch (err) {
-    errorLogger.error('[Firebase] Init failed', err);
+    initialized = true;
+    console.log('[Firebase] Initialized successfully');
+  } catch (err: any) {
+    errorLogger.error(`[Firebase] Init failed: ${err.message}`);
   }
 };
 
-/**
- * Send a single FCM push notification.
- * Non-critical — never throws; logs failure silently.
- *
- * @param fcmToken  Device FCM token stored on User.fcmToken
- * @param title     Notification title (shown on lock screen)
- * @param body      Notification body text
- * @param data      Optional key-value pairs for in-app deep-link handling
- */
+// Send push notification to one or multiple device tokens
+// Uses sendEachForMulticast — handles batch delivery + individual failure logging
 export const sendFCMNotification = async (
-  fcmToken: string,
-  title:    string,
-  body:     string,
-  data?:    Record<string, string>,
+  tokens: string | string[],
+  title:  string,
+  body:   string,
+  data?:  Record<string, string>,
 ): Promise<void> => {
-  if (!firebaseInitialized) return;
+  if (!initialized) return;
+
+  const tokenList = Array.isArray(tokens) ? tokens.filter(Boolean) : [tokens];
+  if (!tokenList.length) return;
+
   try {
-    await admin.messaging().send({
-      token: fcmToken,
+    const message: admin.messaging.MulticastMessage = {
+      tokens: tokenList,
       notification: { title, body },
-      data: data ?? {},
-      android: {
-        priority: 'high',
-        notification: { sound: 'default', channelId: 'carely_default' },
-      },
-      apns: {
-        payload: { aps: { sound: 'default', badge: 1 } },
-      },
-    });
-  } catch (err) {
-    // Stale / invalid tokens are common — just log, never throw
-    console.error('[FCM] Send failed:', (err as Error).message);
+      data:         data ?? {},
+      android:      { priority: 'high' },
+      apns:         { payload: { aps: { sound: 'default', badge: 1 } } },
+    };
+
+    const response = await admin.messaging().sendEachForMulticast(message);
+
+    // Log individual token failures (stale tokens — clean from DB in user service)
+    if (response.failureCount > 0) {
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          errorLogger.error(`[FCM] Token failed: ${tokenList[idx]} | ${resp.error?.message}`);
+        }
+      });
+    }
+  } catch (err: any) {
+    errorLogger.error(`[FCM] Push failed: ${err.message}`);
   }
 };

@@ -1,89 +1,80 @@
-import { Socket } from 'socket.io';
-import { addUser, removeUser, getSocketId } from './onlineUsers';
-import { getIO } from './socket';
+import { Server, Socket } from 'socket.io';
+import { getIO }          from './socket';
 
-interface CarelySocket extends Socket {
-  userId?:    string;
-  userEmail?: string;
-  userRole?:  string;
-}
+// registerHandlers — called once per connection from socket.ts
+// Handles: messaging, typing, message status, notifications, booking events
+export const registerHandlers = (io: Server, socket: Socket): void => {
+  const userId = socket.userId!; // guaranteed by JWT middleware
 
-/**
- * Register all socket event handlers for a connected user.
- * Called once per connection from socket.ts → initSocket().
- */
-export const registerSocketHandlers = (socket: CarelySocket): void => {
-  const userId = socket.userId;
+  // Join personal room — direct notifications + booking events target this room
+  socket.join(userId);
 
-  // Join personal room for direct notifications + booking events
-  if (userId) {
-    socket.join(userId);
-    addUser(userId, socket.id);
-    console.log(`[Socket] ${socket.userRole} connected: ${userId}`);
-  }
-
-  // ─── Messaging ──────────────────────────────────────────────────────────
-
-  /** Join a conversation room to receive message:new events in real-time */
+  // Messaging — join/leave conversation rooms
   socket.on('conversation:join', (conversationId: string) => {
     if (conversationId) socket.join(conversationId);
   });
 
-  /** Leave a conversation room */
   socket.on('conversation:leave', (conversationId: string) => {
     if (conversationId) socket.leave(conversationId);
   });
 
-  /** Broadcast typing:start to the other participant in the conversation */
+  // Typing indicators — forwarded to everyone else in the conversation room
   socket.on('typing:start', ({ conversationId }: { conversationId: string }) => {
     socket.to(conversationId).emit('typing:start', { userId, conversationId });
   });
 
-  /** Broadcast typing:stop to the other participant */
   socket.on('typing:stop', ({ conversationId }: { conversationId: string }) => {
     socket.to(conversationId).emit('typing:stop', { userId, conversationId });
   });
 
-  // ─── Notifications ──────────────────────────────────────────────────────
+  // Message delivered — client emits this when it receives message:new
+  // Server notifies the original sender that their message was delivered
+  socket.on('message:delivered', ({
+    messageId,
+    senderId,
+    conversationId,
+  }: {
+    messageId:      string;
+    senderId:       string;
+    conversationId: string;
+  }) => {
+    // Notify sender — their message reached the recipient's device
+    io.to(senderId).emit('message:delivered', {
+      messageId,
+      conversationId,
+      deliveredAt: new Date().toISOString(),
+    });
+    // DB update (deliveredAt) is handled by message.service when REST message is fetched
+  });
 
-  /** Client ACKs receipt of a notification (for delivery analytics) */
+  // Message seen — client emits when user opens/reads a conversation
+  // DB update happens via REST PATCH /messages/:conversationId/seen
+  // Socket here just broadcasts the real-time seen status to the sender
+  socket.on('message:seen', ({
+    conversationId,
+    senderId,
+  }: {
+    conversationId: string;
+    senderId:       string;
+  }) => {
+    io.to(senderId).emit('message:seen', {
+      conversationId,
+      seenBy: userId,
+      seenAt: new Date().toISOString(),
+    });
+  });
+
+  // Notification delivery ACK — client confirms it received the notification
   socket.on('notification:ack', ({ notificationId }: { notificationId: string }) => {
-    console.log(`[Socket] notification:ack — user: ${userId}, id: ${notificationId}`);
+    // Reserved for analytics / delivery tracking — extend as needed
+    console.log(`[Socket] notification:ack | user: ${userId} | id: ${notificationId}`);
   });
 
-  // ─── Booking (Server → Client ONLY) ────────────────────────────────────
-  //
-  // Booking state changes are ALWAYS driven by API calls, never by client socket events.
-  // The service layer emits these using emitBookingEvent() below.
-  //
-  //  ┌──────────────────────────────────┬──────────────────────────────────────┐
-  //  │ Event                            │ Recipients                           │
-  //  ├──────────────────────────────────┼──────────────────────────────────────┤
-  //  │ booking:new                      │ Caregiver — new pending booking      │
-  //  │ booking:confirmed                │ Client + Caregiver                   │
-  //  │ booking:declined                 │ Client                               │
-  //  │ booking:auto_released            │ Client — cron fired, hold expired    │
-  //  │ booking:completed                │ Client + Caregiver                   │
-  //  │ booking:cancelled                │ Client + Caregiver                   │
-  //  └──────────────────────────────────┴──────────────────────────────────────┘
-  //
-  //  Payload shape:  { bookingId, status, message, updatedAt (UTC ISO string) }
-
-  // ─── Disconnect ─────────────────────────────────────────────────────────
-
-  socket.on('disconnect', () => {
-    if (userId) {
-      removeUser(userId);
-      console.log(`[Socket] ${socket.userRole} disconnected: ${userId}`);
-    }
-  });
+  // Note: disconnect is handled in socket.ts — NOT duplicated here
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  BOOKING SOCKET HELPER
-//  Import and call this from booking.service.ts to emit real-time booking events
-// ─────────────────────────────────────────────────────────────────────────────
-
+// Booking event emitter — import and call from booking.service.ts
+// Emits to personal userId rooms — safe if user is offline (silently skips)
 export interface IBookingSocketPayload {
   bookingId:  string;
   status:     string;
@@ -92,11 +83,6 @@ export interface IBookingSocketPayload {
   [key: string]: unknown;
 }
 
-/**
- * Emit a booking event to one or more user IDs.
- * Safe to call even if no socket is connected (silently skips offline users).
- * Offline users are handled by sendNotification() FCM push in the service layer.
- */
 export const emitBookingEvent = (
   event:   string,
   userIds: string[],
@@ -104,11 +90,32 @@ export const emitBookingEvent = (
 ): void => {
   try {
     const io = getIO();
-    userIds.forEach((uid) => {
-      const sid = getSocketId(uid);
-      if (sid) io.to(sid).emit(event, payload);
-    });
+    userIds.forEach((uid) => io.to(uid).emit(event, payload));
   } catch {
     // Socket errors must never crash the booking service
+  }
+};
+
+// Message:new emitter — import and call from message.service.ts after creating a message
+// Emits to conversation room — all online participants in that conversation receive it
+export interface IMessageSocketPayload {
+  _id:            string;
+  conversationId: string;
+  sender:         { _id: string; name: string; profileImage?: string };
+  content:        string;
+  contentType:    string;
+  attachment?:    string | null;
+  createdAt:      string; // UTC ISO string
+}
+
+export const emitNewMessage = (
+  conversationId: string,
+  payload: IMessageSocketPayload,
+): void => {
+  try {
+    const io = getIO();
+    io.to(conversationId).emit('message:new', payload);
+  } catch {
+    // never crash message service
   }
 };

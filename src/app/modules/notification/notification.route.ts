@@ -1,37 +1,31 @@
-import express        from 'express';
-import { checkAuth }  from '../../middlewares/checkAuth';
-import { USER_ROLES } from '../../../enums/user';
+import express from 'express';
+import { checkAuth }       from '../../middlewares/checkAuth';
+import { USER_ROLES }      from '../../../enums/user';
+import validateRequest     from '../../middlewares/validateRequest';
 import { NotificationController } from './notification.controller';
+import { NotificationValidation } from './notification.validation';
 
 const router = express.Router();
+const auth = checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER, USER_ROLES.ADMIN);
 
-router.get(
-  '/my',
-  checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER, USER_ROLES.ADMIN),
-  NotificationController.getMyNotifications,
-);
+// Static routes — must be declared BEFORE /:id
+router.get('/my',           auth, NotificationController.getMyNotifications);
+router.get('/recent',       auth, NotificationController.getRecent);
+router.get('/unread-count', auth, NotificationController.getUnreadCount);
+router.patch('/read-all',   auth, NotificationController.markAllAsRead);
 
-router.get(
-  '/unread-count',                                          // ← BEFORE /:id
-  checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER, USER_ROLES.ADMIN),
-  NotificationController.getUnreadCount,
-);
-
-router.patch(
-  '/read-all',                                              // ← BEFORE /:id
-  checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER, USER_ROLES.ADMIN),
-  NotificationController.markAllAsRead,
-);
-
+// Parameterized routes
 router.patch(
   '/:id/read',
-  checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER, USER_ROLES.ADMIN),
+  auth,
+  validateRequest(NotificationValidation.notificationIdSchema),
   NotificationController.markOneAsRead,
 );
 
 router.delete(
   '/:id',
-  checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER, USER_ROLES.ADMIN),
+  auth,
+  validateRequest(NotificationValidation.notificationIdSchema),
   NotificationController.deleteOne,
 );
 

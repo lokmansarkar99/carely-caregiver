@@ -10,8 +10,8 @@ export type INotification = {
   referenceModel: REFERENCE_MODEL | null;
   isRead:         boolean;
   readAt:         Date | null;
-  createdAt: Date
-  updatetAt: Date
+  createdAt:      Date;
+  updatedAt:      Date;
 };
 
 export type INotificationDocument = INotification & Document;

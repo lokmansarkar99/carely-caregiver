@@ -1,94 +1,84 @@
-import { Types } from 'mongoose';
-import { Notification } from '../app/modules/notification/notification.model';
-import { NOTIFICATION_TYPE, REFERENCE_MODEL } from '../enums/notification';
-import { getSocketId } from '../socket/onlineUsers';
-import { getIO } from '../socket/socket';
+import { Types }               from 'mongoose';
+import { Notification }        from '../app/modules/notification/notification.model';
+import { User }                from '../app/modules/user/user.model';
+import { getIO }               from '../socket/socket';
 import { sendFCMNotification } from '../config/firebase.config';
-import { User } from '../app/modules/user/user.model';
+import { NOTIFICATION_TYPE, REFERENCE_MODEL } from '../enums/notification';
 
-interface ISendNotificationPayload {
-  recipientId:    string | Types.ObjectId;
-  type:           NOTIFICATION_TYPE;
-  title:          string;
-  body?:          string;
-  referenceId?:   string | Types.ObjectId | null;
+export interface ISendNotificationPayload {
+  recipientId:     string;
+  type:            NOTIFICATION_TYPE;
+  title:           string;
+  body:            string;
+  referenceId?:    string | null;
   referenceModel?: REFERENCE_MODEL | null;
+  data?:           Record<string, string>; // FCM deep-link data (bookingId, screen, etc.)
 }
 
-/**
- * Unified Carely notification dispatcher.
- *
- * 3-step priority:
- *   1. DB persist   — always (offline users fetch on next app open)
- *   2. Socket.io    — if user is currently connected (real-time)
- *   3. FCM push     — if offline AND User.fcmToken exists
- *
- * NON-CRITICAL — never throws. Failures are logged only.
- * A notification error must NEVER crash the calling service (booking, payout, etc.)
- */
-const sendNotification = async (
-  payload: ISendNotificationPayload,
-): Promise<void> => {
-  try {
-    const {
-      recipientId,
-      type,
-      title,
-      body           = '',
-      referenceId    = null,
-      referenceModel = null,
-    } = payload;
+// Layer 1 → DB | Layer 2 → Socket room | Layer 3 → FCM push
+const sendNotification = async (payload: ISendNotificationPayload): Promise<void> => {
+  const {
+    recipientId,
+    type,
+    title,
+    body,
+    referenceId    = null,
+    referenceModel = null,
+    data           = {},
+  } = payload;
 
-    // ── STEP 1: Persist to DB (always) ──────────────────────────────────────
-    const notification = await Notification.create({
-      recipient: new Types.ObjectId(String(recipientId)),
+  // Layer 1: Always persist — offline users fetch on next app open
+  const notification = await Notification.create({
+    recipient:      new Types.ObjectId(recipientId),
+    type,
+    title,
+    body,
+    referenceId:    referenceId ? new Types.ObjectId(referenceId) : null,
+    referenceModel: referenceModel ?? null,
+  });
+
+  // Layer 2: Socket — user joined personal room named after their userId
+  try {
+    const io = getIO();
+    io.to(recipientId).emit('notification:new', {
+      _id:            notification._id,
       type,
       title,
       body,
-      ...(referenceId    ? { referenceId:    new Types.ObjectId(String(referenceId)) } : {}),
-      ...(referenceModel ? { referenceModel } : {}),
+      isRead:         false,
+      referenceId,
+      referenceModel,
+      createdAt:      notification.createdAt,
+      data,
     });
+  } catch {
+    // Socket unavailable — FCM handles offline delivery
+  }
 
-    // ── STEP 2: Real-time via Socket.io (if online) ──────────────────────────
-    const socketId = getSocketId(String(recipientId));
-    if (socketId) {
-      const io = getIO();
-      io.to(socketId).emit('notification:new', {
-        id:             notification.id,
-        type:           notification.type,
-        title:          notification.title,
-        body:           notification.body,
-        referenceId:    notification.referenceId,
-        referenceModel: notification.referenceModel,
-        isRead:         false,
-        createdAt:      (notification as any).createdAt ?? new Date(),
-      });
-      // User is online → FCM not needed
-      return;
-    }
-
-    // ── STEP 3: FCM push (offline user) ─────────────────────────────────────
-    const user = await User.findById(String(recipientId))
-      .select('fcmToken')
-      .lean();
-
-    if (user?.fcmToken) {
+  // Layer 3: FCM — push to all registered devices
+  try {
+    const user = await User.findById(recipientId).select('+fcmTokens');
+    if (user?.fcmTokens?.length) {
       await sendFCMNotification(
-        user.fcmToken,
+        user.fcmTokens,   // string[]
         title,
         body,
-        {
-          type,
-          referenceId:    referenceId    ? String(referenceId)    : '',
-          referenceModel: referenceModel ? String(referenceModel) : '',
-          notificationId: String(notification._id),
-        },
+        { type, notificationId: notification._id.toString(), ...data },
       );
     }
-  } catch (err) {
-    // Never re-throw — notification must NOT break the caller
-    console.error('[sendNotification] Non-critical error:', (err as Error).message);
+  } catch {
+    // FCM errors never block notification flow
   }
 };
 
-export default sendNotification;
+// Send same notification to multiple recipients in parallel
+const sendBulkNotification = async (
+  recipientIds: string[],
+  payload: Omit<ISendNotificationPayload, 'recipientId'>,
+): Promise<void> => {
+  await Promise.allSettled(
+    recipientIds.map((id) => sendNotification({ ...payload, recipientId: id })),
+  );
+};
+
+export { sendNotification, sendBulkNotification };
