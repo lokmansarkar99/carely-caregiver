@@ -13,6 +13,7 @@ const FIELD_FOLDER_MAP: Record<string, string> = {
   criminalRecord: 'documents',
   insurance:      'documents',
   attachment:     'attachments',
+  icon:           'category',
 };
 
 // ── Per-field size limits (bytes) 
@@ -23,6 +24,7 @@ const FIELD_SIZE_LIMIT: Record<string, number> = {
   criminalRecord: 10 * 1024 * 1024,  // 10 MB
   insurance:      10 * 1024 * 1024,  // 10 MB
   attachment:     20 * 1024 * 1024,  // 20 MB
+  icon:           2  * 1024 * 1024,  // 2 MB
 };
 
 // ── Allowed MIME types per field 
@@ -37,6 +39,7 @@ const FIELD_MIME_MAP: Record<string, string[]> = {
   criminalRecord: DOC_MIMES,
   insurance:      DOC_MIMES,
   attachment:     ALL_ATTACH,
+  icon:           IMAGE_MIMES,
 };
 
 const ensureDir = (dir: string) => {
@@ -97,6 +100,7 @@ const fileUploadHandler = (() => {
     { name: 'criminalRecord', maxCount: 1 },
     { name: 'insurance',      maxCount: 1 },
     { name: 'attachment',     maxCount: 5 },
+    { name: 'icon',           maxCount: 1 },
   ]);
 })();
 

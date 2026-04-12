@@ -9,6 +9,7 @@ const FIELD_TO_FOLDER: Record<string, string> = {
   criminalRecord: 'documents',   // Caregiver: criminal record check
   insurance:      'documents',   // Caregiver: insurance certificate
   attachment:     'attachments', // Messaging file attachments
+  icon: 'category',     // Service category icons
 };
 
 export type IFolderName =
@@ -17,7 +18,8 @@ export type IFolderName =
   | 'nursingCert'
   | 'criminalRecord'
   | 'insurance'
-  | 'attachment';
+  | 'attachment'
+  | 'icon';
 
 /**
  * Returns the relative path for a SINGLE uploaded file.
