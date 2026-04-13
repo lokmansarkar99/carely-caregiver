@@ -4,6 +4,7 @@
  */
 const FIELD_TO_FOLDER: Record<string, string> = {
   profileImage:   'user',        // Profile avatar — all roles
+  careRecipientPhoto:  'care-recipients',
   governmentId:   'documents',   // Caregiver: govt-issued ID
   nursingCert:    'documents',   // Caregiver: nursing certificate
   criminalRecord: 'documents',   // Caregiver: criminal record check
@@ -14,6 +15,7 @@ const FIELD_TO_FOLDER: Record<string, string> = {
 
 export type IFolderName =
   | 'profileImage'
+  |'careRecipientPhoto' 
   | 'governmentId'
   | 'nursingCert'
   | 'criminalRecord'

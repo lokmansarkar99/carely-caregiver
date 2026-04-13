@@ -8,6 +8,7 @@ import ApiError from '../../errors/ApiErrors';
 // ── Field → folder map (must match shared/getFilePath.ts) 
 const FIELD_FOLDER_MAP: Record<string, string> = {
   profileImage:   'user',
+  careRecipientPhoto:  'care-recipients', 
   governmentId:   'documents',
   nursingCert:    'documents',
   criminalRecord: 'documents',
@@ -19,6 +20,7 @@ const FIELD_FOLDER_MAP: Record<string, string> = {
 // ── Per-field size limits (bytes) 
 const FIELD_SIZE_LIMIT: Record<string, number> = {
   profileImage:   2  * 1024 * 1024,  // 2 MB
+   careRecipientPhoto:  2  * 1024 * 1024,
   governmentId:   10 * 1024 * 1024,  // 10 MB
   nursingCert:    10 * 1024 * 1024,  // 10 MB
   criminalRecord: 10 * 1024 * 1024,  // 10 MB
@@ -34,6 +36,7 @@ const ALL_ATTACH  = [...IMAGE_MIMES, 'application/pdf', 'video/mp4', 'video/quic
 
 const FIELD_MIME_MAP: Record<string, string[]> = {
   profileImage:   IMAGE_MIMES,
+   careRecipientPhoto:  IMAGE_MIMES,
   governmentId:   DOC_MIMES,
   nursingCert:    DOC_MIMES,
   criminalRecord: DOC_MIMES,
@@ -95,6 +98,7 @@ const fileUploadHandler = (() => {
     limits: { fileSize: 20 * 1024 * 1024 }, 
   }).fields([
     { name: 'profileImage',   maxCount: 1 },
+    { name: 'careRecipientPhoto', maxCount: 1 },
     { name: 'governmentId',   maxCount: 1 },
     { name: 'nursingCert',    maxCount: 1 },
     { name: 'criminalRecord', maxCount: 1 },

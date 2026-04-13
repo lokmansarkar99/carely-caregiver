@@ -8,6 +8,7 @@ import { NotificationRoutes } from "../modules/notification/notification.route";
 import { CategoryRoutes } from "../modules/category/category.route";
 import { CaregiverProfileRoutes } from "../modules/caregiver-profile/caregiver-profile.route";
 import { ClientProfileRoutes } from "../modules/client-profile/client-profile.route";
+import CareRecipientRoutes from "../modules/care-recipient/care-recipient.route";
 
 
 
@@ -27,6 +28,8 @@ router.use("/categories", CategoryRoutes)
 router.use("/caregiver-profiles", CaregiverProfileRoutes)
 
 router.use("/client-profiles", ClientProfileRoutes)
+
+router.use("/care-recipient", CareRecipientRoutes)
 
 export default router;
 
