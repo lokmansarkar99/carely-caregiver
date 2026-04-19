@@ -10,6 +10,7 @@ import { CaregiverProfileRoutes } from "../modules/caregiver-profile/caregiver-p
 import { ClientProfileRoutes } from "../modules/client-profile/client-profile.route";
 import CareRecipientRoutes from "../modules/care-recipient/care-recipient.route";
 import { AvailabilityRoutes } from "../modules/availability/availability.route";
+import { DocumentRoutes } from "../modules/document/document.route";
 
 
 
@@ -33,6 +34,8 @@ router.use("/client-profiles", ClientProfileRoutes)
 router.use("/care-recipient", CareRecipientRoutes)
 
 router.use("/availability", AvailabilityRoutes)
+
+router.use("/document", DocumentRoutes)
 
 export default router;
 

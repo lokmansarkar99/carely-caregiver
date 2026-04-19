@@ -16,6 +16,8 @@ export enum NOTIFICATION_TYPE {
   CAREGIVER_REJECTED = 'caregiver_rejected', // → Caregiver: account rejected
   DOCUMENT_VERIFIED  = 'document_verified',  // → Caregiver: specific doc approved
   DOCUMENT_REJECTED  = 'document_rejected',  // → Caregiver: specific doc rejected
+  DOCUMENT_APPROVED = 'DOCUMENT_APPROVED',
+
 
   // ── Messaging ────────────────────────────────────────────────────
   NEW_MESSAGE = 'new_message',
@@ -30,4 +32,6 @@ export enum REFERENCE_MODEL {
   CAREGIVER_PROFILE = 'CaregiverProfile',
   DOCUMENT          = 'Document',
   EARNING           = 'Earning',
+  CAREGIVER_DOCUMENT = 'CaregiverDocument',
+
 }

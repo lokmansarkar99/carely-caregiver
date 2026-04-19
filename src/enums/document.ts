@@ -1,14 +1,12 @@
-/** Types of documents a caregiver must upload */
 export enum DOCUMENT_TYPE {
-  GOVERNMENT_ID   = 'government_id',
-  NURSING_CERT    = 'nursing_cert',
-  CRIMINAL_RECORD = 'criminal_record',
-  INSURANCE       = 'insurance',
+  GOVERNMENT_ID = 'GOVERNMENT_ID',
+  NURSING_CERT = 'NURSING_CERT',
+  CRIMINAL_RECORD = 'CRIMINAL_RECORD',
+  INSURANCE = 'INSURANCE',
 }
 
-/** Admin verification status per document */
 export enum DOCUMENT_STATUS {
-  PENDING  = 'pending',  // Uploaded, awaiting admin review
-  VERIFIED = 'verified', // Admin approved
-  REJECTED = 'rejected', // Admin rejected with reason
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
 }
