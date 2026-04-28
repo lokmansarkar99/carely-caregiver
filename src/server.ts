@@ -6,6 +6,7 @@ import { logger, errorLogger } from './shared/logger';
 import colors   from 'colors';
 import seedAdmin from './DB';
 import { initSocket } from './socket/socket';  
+import { startBookingCron } from './app/modules/booking/booking.cron';
 
 process.on('uncaughtException', (err) => {
   errorLogger.error(`Uncaught Exception: ${err.message}`);
@@ -22,8 +23,10 @@ async function main() {
       family: 4,
     });
     
+
     logger.info(colors.green('Database connected successfully!'));
 
+    startBookingCron()
     seedAdmin();
     
 

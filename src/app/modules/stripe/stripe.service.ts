@@ -1,162 +1,128 @@
-// import Stripe        from 'stripe';
-// import { Types }     from 'mongoose';
-// import { StatusCodes } from 'http-status-codes';
-// import stripeClient  from '../../../config/stripe.config';
-// import ApiError      from '../../../errors/ApiErrors';
-// import { Invoice }   from '../invoice/invoice.model';
-// import { Appointment } from '../appointment/appointment.model';
-// import { Slot }      from '../slot/slot.model';
-// import { PAYMENT_STATUS } from '../../../enums/payment';
-// import { SESSION_TYPE }   from '../../../enums/appointment';
-// import { createBookingFromWebhook } from '../appointment/appointment.service';
-// import config        from '../../../config';
+import { User } from '../user/user.model';
+import Stripe from 'stripe';
+import httpStatus from 'http-status-codes';
+import ApiError from '../../../errors/ApiErrors';
+import stripe from '../../../config/stripe.config';
+import Booking from '../booking/booking.model';
+import { BOOKING_STATUS, PAYMENT_STATUS } from '../booking/booking.interface';
+import { emitBookingEvent } from '../../../socket/socketHandlers';
 
-// // ─── Constants ────────────────────────────────────────────────────
-// const PROCESSING_FEE       = Number(config.fees.processing_fee);
-// const PLATFORM_FEE_PERCENT = Number(config.fees.platform_fee_percent);
+const createPaymentIntent = async (bookingId: string, clientId: string) => {
+  // Creates a Stripe PaymentIntent for the booking total and attaches the PI ID to the booking
+  const booking = await Booking.findById(bookingId);
+  if (!booking) throw new ApiError(httpStatus.NOT_FOUND, 'Booking not found');
+  if (booking.client.toString() !== clientId) {
+    throw new ApiError(httpStatus.FORBIDDEN, 'Not authorized');
+  }
+  if (booking.paymentStatus === PAYMENT_STATUS.PAID) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Booking already paid');
+  }
+  if (booking.heldUntil < new Date()) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Booking hold has expired');
+  }
 
-// // ─── calculateFees ────────────────────────────────────────────────
-// export const calculateFees = (sessionFee: number) => {
-//   const processingFee = PROCESSING_FEE;
-//   const totalAmount   = sessionFee + processingFee;
-//   const platformFee   = +((sessionFee * PLATFORM_FEE_PERCENT) / 100).toFixed(2);
-//   const netAmount     = +(sessionFee - platformFee).toFixed(2);
-//   return { processingFee, totalAmount, platformFee, netAmount };
-// };
+const client = await User.findById(clientId).select('email name')
 
-// // ─── 1. Stripe Webhook ────────────────────────────────────────────
-// const handleWebhook = async (rawBody: Buffer, signature: string) => {
-//   let event: Stripe.Event;
 
-//   // ── Read secret from config (falls back to process.env) ──────
-//   const webhookSecret =
-//     (config.stripe as any).webhook_secret ??
-//     (config.stripe as any).webhookSecret  ??
-//     process.env.STRIPE_WEBHOOK_SECRET     ??
-//     process.env.STRIPE_WEBHOOK_KEY        ?? '';
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: Math.round(booking.totalAmount * 100),
+    currency: 'usd',
+    automatic_payment_methods: {
+      enabled: true,
+      allow_redirects: 'never'
+    },
+    receipt_email: client?.email || undefined,
+    metadata: {
+      bookingId: booking._id.toString(),
+      clientId,
+    },
+  });
 
-//   if (!webhookSecret) {
-//     console.error('[WEBHOOK] ❌ STRIPE_WEBHOOK_SECRET is not set in .env!');
-//     throw new ApiError(StatusCodes.INTERNAL_SERVER_ERROR, 'Webhook secret not configured');
-//   }
+  booking.paymentIntentId = paymentIntent.id;
+  await booking.save();
 
-//   try {
-//     event = stripeClient.webhooks.constructEvent(rawBody, signature, webhookSecret);
-//   } catch (err: any) {
-//     // ── Detailed log so you can see the real error ────────────
-//     console.error('[WEBHOOK] ❌ Signature verification failed:', err.message);
-//     console.error('[WEBHOOK]    Secret used (first 12 chars):', webhookSecret.slice(0, 12) + '...');
-//     throw new ApiError(StatusCodes.BAD_REQUEST, `Webhook signature failed: ${err.message}`);
-//   }
+  return {
+    clientSecret: paymentIntent.client_secret,
+    paymentIntentId: paymentIntent.id,
+    amount: booking.totalAmount,
 
-//   switch (event.type) {
+  };
+};
 
-//     case 'checkout.session.completed': {
-//       const session  = event.data.object as Stripe.Checkout.Session;
-//       const metadata = session.metadata!;
+const handleWebhook = async (rawBody: Buffer, signature: string) => {
+  // Verifies Stripe signature and processes payment lifecycle events
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+  if (!webhookSecret) {
+    throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Webhook secret not configured');
+  }
 
-//       const clientId    = metadata.clientId;
-//       const slotId      = metadata.slotId;
-//       const sessionFee  = Number(metadata.sessionFee);
-//       const sessionType = (metadata.sessionType as SESSION_TYPE) ?? SESSION_TYPE.INDIVIDUAL_THERAPY;
-//       const timezone    = metadata.timezone ?? 'America/New_York';
+  let event: Stripe.Event;
+  try {
+    event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+  } catch (err: any) {
+    throw new ApiError(httpStatus.BAD_REQUEST, `Webhook signature failed: ${err.message}`);
+  }
 
-//       const { processingFee } = calculateFees(sessionFee);
+  switch (event.type) {
+    case 'payment_intent.succeeded': {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const booking = await Booking.findOne({ paymentIntentId: pi.id });
+      if (!booking) break;
 
-//       const slot = await Slot.findById(new Types.ObjectId(slotId));
-//       if (!slot || slot.isBooked) {
-//         console.warn(`[WEBHOOK] Slot not found or already booked: ${slotId}`);
-//         break;
-//       }
+      booking.paymentStatus = PAYMENT_STATUS.PAID;
+      await booking.save();
 
-//       await createBookingFromWebhook({
-//         clientId,
-//         clientObjectId:  new Types.ObjectId(clientId),
-//         slot,
-//         stripeSessionId: session.id,
-//         sessionType,
-//         sessionFee,
-//         processingFee,
-//         timezone,
-//       });
+      emitBookingEvent('booking:update', [booking.client.toString()], {
+        bookingId: booking._id.toString(),
+        status: booking.status as BOOKING_STATUS,
+        paymentStatus: PAYMENT_STATUS.PAID,
+        message: 'Payment received. Awaiting caregiver confirmation.',
+        updatedAt: new Date().toISOString(),
+      });
+      break;
+    }
 
-//       console.log(`[WEBHOOK] ✅ Booking created for session: ${session.id}`);
-//       break;
-//     }
+    case 'payment_intent.payment_failed': {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      const booking = await Booking.findOne({ paymentIntentId: pi.id });
+      if (!booking) break;
 
-//     case 'checkout.session.expired': {
-//       const session = event.data.object as Stripe.Checkout.Session;
-//       console.log(`[WEBHOOK] Checkout expired: ${session.id}`);
-//       break;
-//     }
+      emitBookingEvent('booking:update', [booking.client.toString()], {
+        bookingId: booking._id.toString(),
+        status: booking.status as BOOKING_STATUS,
+        message: 'Payment failed. Please try again.',
+        updatedAt: new Date().toISOString(),
+      });
+      break;
+    }
 
-//     case 'charge.refunded': {
-//       const charge = event.data.object as Stripe.Charge;
-//       await Invoice.findOneAndUpdate(
-//         { stripePaymentIntentId: charge.payment_intent as string },
-//         { $set: { paymentStatus: PAYMENT_STATUS.REFUNDED } },
-//       );
-//       break;
-//     }
+    case 'charge.refunded': {
+      const charge = event.data.object as Stripe.Charge;
+      const booking = await Booking.findOne({
+        paymentIntentId: charge.payment_intent as string,
+      });
+      if (!booking) break;
 
-//     default:
-//       console.log(`[WEBHOOK] Unhandled: ${event.type}`);
-//   }
+      booking.paymentStatus = PAYMENT_STATUS.REFUNDED;
+      await booking.save();
+      break;
+    }
 
-//   return { received: true };
-// };
+    default:
+      console.log(`WEBHOOK: Unhandled event type: ${event.type}`);
+  }
 
-// // ─── 2. Refund Payment ────────────────────────────────────────────
-// const refundPayment = async (
-//   appointmentId: string,
-//   reason: Stripe.RefundCreateParams.Reason = 'requested_by_customer',
-// ) => {
-//   const appointment = await Appointment.findById(new Types.ObjectId(appointmentId));
-//   if (!appointment) throw new ApiError(StatusCodes.NOT_FOUND, 'Appointment not found');
+  return { received: true };
+};
 
-//   const invoice = await Invoice.findOne({ appointment: appointment._id });
-//   if (!invoice || !(invoice as any).stripePaymentIntentId)
-//     throw new ApiError(StatusCodes.NOT_FOUND, 'Invoice or payment not found');
-//   if ((invoice as any).paymentStatus === PAYMENT_STATUS.REFUNDED)
-//     throw new ApiError(StatusCodes.BAD_REQUEST, 'Payment already refunded');
+const getPaymentStatus = async (bookingId: string, userId: string) => {
+  // Returns the paymentStatus for a booking; accessible by the booking's client or caregiver
+  const booking = await Booking.findById(bookingId);
+  if (!booking) throw new ApiError(httpStatus.NOT_FOUND, 'Booking not found');
+  if (booking.client.toString() !== userId && booking.caregiver.toString() !== userId) {
+    throw new ApiError(httpStatus.FORBIDDEN, 'Not authorized');
+  }
+  return { paymentStatus: booking.paymentStatus };
+};
 
-//   const session       = await stripeClient.checkout.sessions.retrieve(
-//     (invoice as any).stripePaymentIntentId,
-//   );
-//   const paymentIntent = session.payment_intent as string;
-
-//   const refund = await stripeClient.refunds.create({ payment_intent: paymentIntent, reason });
-
-//   await Invoice.findByIdAndUpdate((invoice as any)._id, {
-//     $set: { paymentStatus: PAYMENT_STATUS.REFUNDED },
-//   });
-
-//   return {
-//     refundId: refund.id,
-//     status:   refund.status,
-//     amount:   refund.amount ? refund.amount / 100 : 0,
-//   };
-// };
-
-// // ─── 3. Get Payment Status ────────────────────────────────────────
-// const getPaymentStatus = async (appointmentId: string, userId: string) => {
-//   const appointment = await Appointment.findById(new Types.ObjectId(appointmentId));
-//   if (!appointment) throw new ApiError(StatusCodes.NOT_FOUND, 'Appointment not found');
-
-//   const isParticipant =
-//     appointment.client.toString()   === userId ||
-//     appointment.provider.toString() === userId;
-//   if (!isParticipant) throw new ApiError(StatusCodes.FORBIDDEN, 'Not authorized');
-
-//   const invoice = await Invoice.findOne({ appointment: appointment._id })
-//     .select('invoiceNumber sessionFee processingFee totalAmount paymentStatus paidAt');
-
-//   return { appointment, invoice };
-// };
-
-// export const StripeService = {
-//   calculateFees,
-//   handleWebhook,
-//   refundPayment,
-//   getPaymentStatus,
-// };
+export const StripeService = { createPaymentIntent, handleWebhook, getPaymentStatus };

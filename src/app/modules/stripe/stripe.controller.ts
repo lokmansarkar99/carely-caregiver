@@ -1,50 +1,45 @@
-// import { Request, Response } from 'express';
-// import { StatusCodes }       from 'http-status-codes';
-// import catchAsync            from '../../../shared/catchAsync';
-// import sendResponse          from '../../../shared/sendResponse';
-// import { StripeService }     from './stripe.service';
+import { Request, Response } from 'express';
+import httpStatus from 'http-status-codes';
+import catchAsync from '../../../shared/catchAsync';
+import sendResponse from '../../../shared/sendResponse';
+import { StripeService } from './stripe.service';
 
-// // ⚠️ NO catchAsync — needs raw error handling
-// const handleWebhook = async (req: Request, res: Response) => {
-//   try {
-//     const signature = req.headers['stripe-signature'] as string;
-//     const result    = await StripeService.handleWebhook(req.body, signature);
-//     res.status(StatusCodes.OK).json(result);
-//   } catch (error: any) {
-//     // ── Log the real error so you can debug ──────────────────
-//     console.error('[WEBHOOK CONTROLLER] ❌', error.message);
-//     res.status(StatusCodes.BAD_REQUEST).json({ success: false, message: error.message });
-//   }
-// };
+const createCheckoutSession = catchAsync(async (req: Request, res: Response) => {
+  const result = await StripeService.createPaymentIntent(req.body.bookingId, req.user.id);
+  sendResponse(res, {
+    statusCode: httpStatus.CREATED,
+    success: true,
+    message: 'Checkout session created successfully',
+    data: result,
+  });
+});
 
-// const getPaymentStatus = catchAsync(async (req: Request, res: Response) => {
-//   const result = await StripeService.getPaymentStatus(
-//     req.params.appointmentId as string,
-//     req.user.id,
-//   );
-//   sendResponse(res, {
-//     statusCode: StatusCodes.OK,
-//     success:    true,
-//     message:    'Payment status retrieved',
-//     data:       result,
-//   });
-// });
+const handleWebhook = async (req: Request, res: Response) => {
+  try {
+    const signature = req.headers['stripe-signature'] as string;
+    const result = await StripeService.handleWebhook(req.body as Buffer, signature);
+    res.status(httpStatus.OK).json(result);
+  } catch (error: any) {
+    console.error('[StripeWebhook] Error:', error.message);
+    res.status(httpStatus.BAD_REQUEST).json({ success: false, message: error.message });
+  }
+};
 
-// const refundPayment = catchAsync(async (req: Request, res: Response) => {
-//   const result = await StripeService.refundPayment(
-//     req.params.appointmentId as string,
-//     req.body.reason,
-//   );
-//   sendResponse(res, {
-//     statusCode: StatusCodes.OK,
-//     success:    true,
-//     message:    'Payment refunded successfully',
-//     data:       result,
-//   });
-// });
+const getPaymentStatus = catchAsync(async (req: Request, res: Response) => {
+  const result = await StripeService.getPaymentStatus(
+    req.params.bookingId as string,
+    req.user.id,
+  );
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Payment status retrieved successfully',
+    data: result,
+  });
+});
 
-// export const StripeController = {
-//   handleWebhook,
-//   getPaymentStatus,
-//   refundPayment,
-// };
+export const StripeController = {
+  createCheckoutSession,
+  handleWebhook,
+  getPaymentStatus,
+};
