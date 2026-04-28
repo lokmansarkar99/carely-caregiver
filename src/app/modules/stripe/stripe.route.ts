@@ -1,29 +1,29 @@
-// import express from 'express';
-// import { checkAuth }        from '../../middlewares/checkAuth';
-// import { USER_ROLES }       from '../../../enums/user';
-// import { StripeController } from './stripe.controller';
+import express from 'express';
+import { checkAuth } from '../../middlewares/checkAuth';
+import { USER_ROLES } from '../../../enums/user';
+import { StripeController } from './stripe.controller';
+import { StripeValidation } from './stripe.validation';
+import validateRequest from '../../middlewares/validateRequest';
 
-// const router = express.Router();
+const router = express.Router();
 
-// // ⚠️ Webhook — raw body required — BEFORE express.json() in app.ts
-// router.post(
-//   '/webhook',
+router.post(
+  '/webhook',
+  express.raw({ type: 'application/json' }),
+  StripeController.handleWebhook,
+);
 
-//   StripeController.handleWebhook,
-// );
+router.post(
+  '/create-checkout-session',
+  checkAuth(USER_ROLES.CLIENT),
+  validateRequest(StripeValidation.createCheckoutSessionSchema),
+  StripeController.createCheckoutSession,
+);
 
-// // Payment status
-// router.get(
-//   '/status/:appointmentId',
-//   checkAuth(USER_ROLES.CLIENT, USER_ROLES.PROVIDER, USER_ROLES.ADMIN),
-//   StripeController.getPaymentStatus,
-// );
+router.get(
+  '/payment-status/:bookingId',
+  checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER),
+  StripeController.getPaymentStatus,
+);
 
-// // Admin refund
-// router.post(
-//   '/refund/:appointmentId',
-//   checkAuth(USER_ROLES.ADMIN),
-//   StripeController.refundPayment,
-// );
-
-// export const StripeRoutes = router;
+export const StripeRoutes = router;

@@ -42,7 +42,13 @@ app.use(
 
 // ─── Parsers ──────────────────────────────────────────────────────────────────
 app.use(cookieParser());
-app.use(express.json());
+app.use((req, res, next) => {
+  if (req.originalUrl.includes('/stripe/webhook')) {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
 app.use(express.urlencoded({ extended: true }));
 
 // ─── Passport ─────────────────────────────────────────────────────────────────
