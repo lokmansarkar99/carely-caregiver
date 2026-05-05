@@ -13,6 +13,7 @@ import { AvailabilityRoutes } from "../modules/availability/availability.route";
 import { DocumentRoutes } from "../modules/document/document.route";
 import { BookingRoutes } from "../modules/booking/booking.route";
 import { StripeRoutes } from "../modules/stripe/stripe.route";
+import { EarningRoutes } from "../modules/earning/earning.route";
 
 
 
@@ -42,6 +43,8 @@ router.use("/document", DocumentRoutes)
 router.use("/booking", BookingRoutes)
 
 router.use("/stripe", StripeRoutes)
+
+router.use('/earnings', EarningRoutes);
 
 export default router;
 

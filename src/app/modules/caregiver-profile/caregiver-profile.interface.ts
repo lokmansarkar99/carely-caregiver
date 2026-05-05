@@ -19,4 +19,5 @@ export interface ICaregiverProfile extends Document {
   averageRating: number;
   totalReviews: number;
   totalBookings: number;
+  preferredPayoutMethod: string | null;
 }

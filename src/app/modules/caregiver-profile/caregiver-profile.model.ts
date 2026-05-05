@@ -19,6 +19,7 @@ const caregiverProfileSchema = new Schema<ICaregiverProfile>(
     state: { type: String, trim: true },
     country: { type: String, trim: true, default: 'US' },
     languages: [{ type: String, trim: true }],
+    preferredPayoutMethod: { type: String, default: null },
     verificationStatus: {
       type: String,
       enum: Object.values(VERIFICATION_STATUS),
@@ -30,6 +31,7 @@ const caregiverProfileSchema = new Schema<ICaregiverProfile>(
     averageRating: { type: Number, default: 0, min: 0, max: 5 },
     totalReviews: { type: Number, default: 0 },
     totalBookings: { type: Number, default: 0 },
+    
   },
   { timestamps: true }
 );
