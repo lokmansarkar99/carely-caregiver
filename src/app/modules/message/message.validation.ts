@@ -1,45 +1,38 @@
-// import { z } from 'zod';
+import { z } from 'zod';
 
-// // ─── POST /message 
-// const sendMessageSchema = z.object({
-//   body: z.object({
-//     conversationId: z
-//       .string()
-//       .min(1, 'conversationId cannot be empty'),
-//     content:     z.string().max(5000).optional().default(''),
-//     messageType: z.enum(['text', 'file', 'system']).optional().default('text'),
-//     tempId:      z.string().optional(), 
-//   }),
-// });
+const sendMessageSchema = z.object({
+  body: z.object({
+    conversationId: z.string().min(1, 'conversationId is required'),
+    content:        z.string().max(5000).optional().default(''),
+    contentType:    z.enum(['TEXT', 'IMAGE', 'FILE']).optional().default('TEXT'),
+  }),
+});
 
-// // ─── GET /message/:conversationId ───────────
-// const getMessagesSchema = z.object({
-//   params: z.object({
-//     conversationId: z.string().min(1, 'conversationId required'),
-//   }),
-//   query: z.object({
-//     page:  z.string().optional().default('1'),
-//     limit: z.string().optional().default('30'),
-//   }),
-// });
+const getMessagesSchema = z.object({
+  params: z.object({
+    conversationId: z.string().min(1, 'conversationId is required'),
+  }),
+  query: z.object({
+    page:  z.string().optional().default('1'),
+    limit: z.string().optional().default('30'),
+  }),
+});
 
-// // ─── PATCH /message/read-all/:conversationId 
-// const markAsReadSchema = z.object({
-//   params: z.object({
-//     conversationId: z.string().min(1, 'conversationId required'),
-//   }),
-// });
+const seenSchema = z.object({
+  params: z.object({
+    conversationId: z.string().min(1, 'conversationId is required'),
+  }),
+});
 
-// // ─── PATCH /message/:id/pin  +  DELETE /message/:id
-// const messageIdSchema = z.object({
-//   params: z.object({
-//     id: z.string().min(1, 'message id required'),
-//   }),
-// });
+const messageIdSchema = z.object({
+  params: z.object({
+    messageId: z.string().min(1, 'messageId is required'),
+  }),
+});
 
-// export const MessageValidation = {
-//   sendMessageSchema,
-//   getMessagesSchema,
-//   markAsReadSchema,
-//   messageIdSchema,
-// };
+export const MessageValidation = {
+  sendMessageSchema,
+  getMessagesSchema,
+  seenSchema,
+  messageIdSchema,
+};

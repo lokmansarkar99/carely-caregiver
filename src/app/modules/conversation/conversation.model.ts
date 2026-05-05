@@ -1,36 +1,28 @@
-// import { Schema, model } from 'mongoose';
-// import { IConversationDocument, IConversationModel } from './conversation.interface';
-// import { Message } from '../message/message.model';
+import { Schema, model } from 'mongoose';
+import { IConversationDocument, IConversationModel } from './conversation.interface';
 
-// const conversationSchema = new Schema<IConversationDocument>(
-//   {
-//     participants: [{
-//       type: Schema.Types.ObjectId,
-//       ref:  'User',
-//     }],
+const conversationSchema = new Schema<IConversationDocument>(
+  {
+    participants: [
+      { type: Schema.Types.ObjectId, ref: 'User' },
+    ],
+    lastMessage: {
+      type:    Schema.Types.ObjectId,
+      ref:     'Message',
+      default: null,
+    },
+    lastMessageAt:        { type: Date,    default: null },
+    clientUnreadCount:    { type: Number,  default: 0 },
+    caregiverUnreadCount: { type: Number,  default: 0 },
+    isActive:             { type: Boolean, default: true },
+  },
+  { timestamps: true },
+);
 
-//     type: {
-//       type:    String,
-//       enum:    ['direct', 'support'],
-//       default: 'direct',
-//     },
-// // 
-//     lastMessage: {
-//       type:    Schema.Types.ObjectId,
-//       ref:     'Message',
-//       default: null,
-//     },
+conversationSchema.index({ participants: 1 });
+conversationSchema.index({ lastMessageAt: -1 });
 
-//     lastMessageAt: { type: Date, default: null },
-//     isActive:      { type: Boolean, default: true },
-//   },
-//   { timestamps: true }
-// );
-
-// // Prevent duplicate conversations between same 2 users
-// conversationSchema.index({ participants: 1 });
-
-// export const Conversation = model<IConversationDocument, IConversationModel>(
-//   'Conversation',
-//   conversationSchema
-// );
+export const Conversation = model<IConversationDocument, IConversationModel>(
+  'Conversation',
+  conversationSchema,
+);

@@ -1,223 +1,227 @@
-// import { Types }        from 'mongoose';
-// import { StatusCodes }  from 'http-status-codes';
-// import ApiError         from '../../../errors/ApiErrors';
-// import { Message }      from './message.model';
-// import { Conversation } from '../conversation/conversation.model';
+import { Types }             from 'mongoose';
+import { StatusCodes }       from 'http-status-codes';
+import ApiError              from '../../../errors/ApiErrors';
+import { Message }           from './message.model';
+import { Conversation }      from '../conversation/conversation.model';
+import { QueryBuilder } from '../../buillder/queryBuilder';
+import { USER_ROLES }        from '../../../enums/user';
+import { emitNewMessage }    from '../../../socket/socketHandlers';
+import { getIO }             from '../../../socket/socket';
 
-// // ─── Helper: validate ObjectId ────────────────────────────────────────────────
-// const validateObjectId = (id: string, label: string) => {
-//   if (!id || !Types.ObjectId.isValid(id)) {
-//     throw new ApiError(
-//       StatusCodes.BAD_REQUEST,
-//       `Invalid ${label}. Please login again and retry.`,
-//     );
-//   }
-// };
+const SENDER_FIELDS = 'name profileImage';
 
-// // ─── 1. Send Message ──────────────────────────────────────────────────────────
-// const sendMessage = async (
-//   conversationId: string,
-//   senderId:       string,
-//   content:        string,
-//   messageType:    'text' | 'file' | 'system' = 'text',
-//   attachments?:   Array<{
-//     url:      string;
-//     fileName: string;
-//     fileType: string;
-//     fileSize: number;
-//   }>,
-// ) => {
-//   validateObjectId(conversationId, 'conversation ID');
-//   validateObjectId(senderId,       'user session');
+// Creates a message, updates conversation counters, and emits real-time events
+const sendMessage = async (
+  conversationId: string,
+  senderId:       string,
+  senderRole:     string,
+  content:        string,
+  contentType:    'TEXT' | 'IMAGE' | 'FILE' = 'TEXT',
+  attachment:     string | null = null,
+) => {
+  if (!Types.ObjectId.isValid(conversationId)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid conversation ID');
+  }
 
-//   if (!content?.trim() && (!attachments || attachments.length === 0)) {
-//     throw new ApiError(StatusCodes.BAD_REQUEST, 'Message must have content or attachment');
-//   }
+  if (!content.trim() && !attachment) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Message must have content or attachment');
+  }
 
-//   const conversation = await Conversation.findById(conversationId);
-//   if (!conversation) {
-//     throw new ApiError(StatusCodes.NOT_FOUND, 'Conversation not found');
-//   }
+  const conversation = await Conversation.findById(conversationId);
+  if (!conversation || !conversation.isActive) {
+    throw new ApiError(StatusCodes.NOT_FOUND, 'Conversation not found');
+  }
 
-//   const isParticipant = conversation.participants.some(
-//     p => p.toString() === senderId,
-//   );
-//   if (!isParticipant) {
-//     throw new ApiError(
-//       StatusCodes.FORBIDDEN,
-//       'You are not a participant of this conversation',
-//     );
-//   }
+  const isParticipant = conversation.participants.some(
+    p => p.toString() === senderId,
+  );
+  if (!isParticipant) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'You are not a participant of this conversation');
+  }
 
-//   const message = await Message.create({
-//     conversation: new Types.ObjectId(conversationId),
-//     sender:       new Types.ObjectId(senderId),
-//     content:      content?.trim() || '',
-//     messageType:  attachments?.length ? 'file' : messageType,
-//     attachments:  attachments || [],
-//   });
+  const message = await Message.create({
+    conversation: new Types.ObjectId(conversationId),
+    sender:       new Types.ObjectId(senderId),
+    content:      content.trim(),
+    contentType,
+    attachment,
+  });
 
-//   await Conversation.findByIdAndUpdate(conversationId, {
-//     lastMessage:   message._id,
-//     lastMessageAt: new Date(),
-//   });
+  const unreadIncrement =
+    senderRole === USER_ROLES.CLIENT
+      ? { $inc: { caregiverUnreadCount: 1 } }
+      : { $inc: { clientUnreadCount:   1 } };
 
-//   const populated = await Message.findById(message._id)
-//     .populate('sender', 'name email profileImage role');
+  await Conversation.findByIdAndUpdate(conversationId, {
+    lastMessage:   message._id,
+    lastMessageAt: new Date(),
+    ...unreadIncrement,
+  });
 
-//   if (!populated) {
-//     throw new ApiError(StatusCodes.INTERNAL_SERVER_ERROR, 'Message save failed');
-//   }
+  const populated = await Message.findById(message._id)
+    .populate('sender', SENDER_FIELDS)
+    .lean();
 
-//   return populated;
-// };
+  if (!populated) {
+    throw new ApiError(StatusCodes.INTERNAL_SERVER_ERROR, 'Failed to save message');
+  }
 
-// // ─── 2. Get Messages — Paginated ─────────────────────────────────────────────
-// const getMessages = async (
-//   conversationId: string,
-//   myId:           string,
-//   page:           number = 1,
-//   limit:          number = 30,
-// ) => {
-//   validateObjectId(conversationId, 'conversation ID');
-//   validateObjectId(myId,           'user session');
+  emitNewMessage(conversationId, {
+    _id:            (populated._id as Types.ObjectId).toString(),
+    conversationId,
+    sender:         populated.sender as any,
+    content:        populated.content,
+    contentType:    populated.contentType,
+    attachment:     populated.attachment,
+    createdAt:      (populated as any).createdAt.toISOString(),
+  });
 
-//   const conversation = await Conversation.findById(conversationId);
-//   if (!conversation) {
-//     throw new ApiError(StatusCodes.NOT_FOUND, 'Conversation not found');
-//   }
+  try {
+    const io           = getIO();
+    const updatedConv  = await Conversation.findById(conversationId)
+      .populate('participants', 'name email profileImage role')
+      .populate('lastMessage',  'content contentType attachment createdAt sender')
+      .lean();
 
-//   const isParticipant = conversation.participants.some(
-//     p => p.toString() === myId,
-//   );
-//   if (!isParticipant) {
-//     throw new ApiError(StatusCodes.FORBIDDEN, 'Not a participant');
-//   }
+    if (updatedConv) {
+      updatedConv.participants.forEach((p: any) => {
+        io.to(p._id.toString()).emit('conversation:updated', updatedConv);
+      });
+    }
+  } catch {
+    // socket errors must never crash the message service
+  }
 
-//   const skip  = (page - 1) * limit;
-//   const total = await Message.countDocuments({
-//     conversation: new Types.ObjectId(conversationId),
-//     isDeleted:    false,
-//   });
+  return populated;
+};
 
-//   const messages = await Message.find({
-//     conversation: new Types.ObjectId(conversationId),
-//     isDeleted:    false,
-//   })
-//     .populate('sender', 'name email profileImage role')
-//     .sort({ createdAt: 1 })
-//     .skip(skip)
-//     .limit(limit);
+// Returns paginated messages for a conversation and marks undelivered ones as delivered
+const getMessages = async (
+  conversationId: string,
+  myId:           string,
+  query:          Record<string, unknown>,
+) => {
+  if (!Types.ObjectId.isValid(conversationId)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid conversation ID');
+  }
 
-//   return {
-//     messages,
-//     pagination: {
-//       total,
-//       page,
-//       limit,
-//       totalPages: Math.ceil(total / limit),
-//       hasMore:    page * limit < total,
-//     },
-//   };
-// };
+  const conversation = await Conversation.findById(conversationId).lean();
+  if (!conversation) {
+    throw new ApiError(StatusCodes.NOT_FOUND, 'Conversation not found');
+  }
 
-// // ─── 3. Mark All As Read ─────────────────────────────────────────────────────
-// const markAllAsRead = async (conversationId: string, myId: string) => {
-//   validateObjectId(conversationId, 'conversation ID');
-//   validateObjectId(myId,           'user session');
+  const isParticipant = conversation.participants.some(
+    p => p.toString() === myId,
+  );
+  if (!isParticipant) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'You are not a participant of this conversation');
+  }
 
-//   const result = await Message.updateMany(
-//     {
-//       conversation: new Types.ObjectId(conversationId),
-//       sender:       { $ne: new Types.ObjectId(myId) },
-//       isRead:       false,
-//     },
-//     {
-//       $set: { isRead: true, readAt: new Date() },
-//     },
-//   );
+  const cleanQuery = { ...query, sort: (query.sort as string) || '-createdAt' };
 
-//   return result.modifiedCount;
-// };
+  const qb = new QueryBuilder(
+    Message.find({
+      conversation: new Types.ObjectId(conversationId),
+      isDeleted:    false,
+    }).populate('sender', SENDER_FIELDS),
+    cleanQuery,
+  )
+    .sort()
+    .paginate();
 
-// // ─── 4. Toggle Pin ────────────────────────────────────────────────────────────
-// const togglePin = async (messageId: string, myId: string) => {
-//   validateObjectId(messageId, 'message ID');
-//   validateObjectId(myId,      'user session');
+  const [messages, meta] = await Promise.all([
+    qb.modelQuery,
+    qb.countTotal(),
+  ]);
 
-//   const message = await Message.findById(messageId);
-//   if (!message) {
-//     throw new ApiError(StatusCodes.NOT_FOUND, 'Message not found');
-//   }
-//   if (message.isDeleted) {
-//     throw new ApiError(StatusCodes.BAD_REQUEST, 'Cannot pin a deleted message');
-//   }
-//   if (message.sender.toString() !== myId) {
-//     throw new ApiError(StatusCodes.FORBIDDEN, 'Only the sender can pin this message');
-//   }
+  // Mark messages as delivered when recipient fetches them
+  await Message.updateMany(
+    {
+      conversation: new Types.ObjectId(conversationId),
+      sender:       { $ne: new Types.ObjectId(myId) },
+      deliveredAt:  null,
+      isDeleted:    false,
+    },
+    { $set: { deliveredAt: new Date() } },
+  );
 
-//   message.isPinned = !message.isPinned;
-//   await message.save();
+  return { messages, meta };
+};
 
-//   return message;
-// };
+// Marks all unread messages in a conversation as read and resets the unread counter
+const markConversationSeen = async (
+  conversationId: string,
+  myId:           string,
+  myRole:         string,
+) => {
+  if (!Types.ObjectId.isValid(conversationId)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid conversation ID');
+  }
 
-// // ─── 5. Soft Delete ───────────────────────────────────────────────────────────
-// const deleteMessage = async (messageId: string, myId: string) => {
-//   validateObjectId(messageId, 'message ID');
-//   validateObjectId(myId,      'user session');
+  const conversation = await Conversation.findById(conversationId).lean();
+  if (!conversation) {
+    throw new ApiError(StatusCodes.NOT_FOUND, 'Conversation not found');
+  }
 
-//   const message = await Message.findById(messageId);
-//   if (!message) {
-//     throw new ApiError(StatusCodes.NOT_FOUND, 'Message not found');
-//   }
-//   if (message.sender.toString() !== myId) {
-//     throw new ApiError(StatusCodes.FORBIDDEN, 'You can only delete your own messages');
-//   }
-//   if (message.isDeleted) {
-//     throw new ApiError(StatusCodes.BAD_REQUEST, 'Message already deleted');
-//   }
+  const isParticipant = conversation.participants.some(
+    p => p.toString() === myId,
+  );
+  if (!isParticipant) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'You are not a participant of this conversation');
+  }
 
-//   message.isDeleted   = true;
-//   message.content     = 'This message was deleted';
-//   message.attachments = [];
-//   message.isPinned    = false;
-//   await message.save();
+  const now = new Date();
 
-//   return { deleted: true, messageId };
-// };
+  const { modifiedCount } = await Message.updateMany(
+    {
+      conversation: new Types.ObjectId(conversationId),
+      sender:       { $ne: new Types.ObjectId(myId) },
+      isRead:       false,
+      isDeleted:    false,
+    },
+    { $set: { isRead: true, readAt: now } },
+  );
 
-// // ─── 6. Get Pinned Messages ───────────────────────────────────────────────────
-// const getPinnedMessages = async (conversationId: string, myId: string) => {
-//   validateObjectId(conversationId, 'conversation ID');
-//   validateObjectId(myId,           'user session');
+  const unreadReset =
+    myRole === USER_ROLES.CLIENT
+      ? { clientUnreadCount: 0 }
+      : { caregiverUnreadCount: 0 };
 
-//   const conversation = await Conversation.findById(conversationId);
-//   if (!conversation) {
-//     throw new ApiError(StatusCodes.NOT_FOUND, 'Conversation not found');
-//   }
+  await Conversation.findByIdAndUpdate(conversationId, { $set: unreadReset });
 
-//   const isParticipant = conversation.participants.some(
-//     p => p.toString() === myId,
-//   );
-//   if (!isParticipant) {
-//     throw new ApiError(StatusCodes.FORBIDDEN, 'Not a participant');
-//   }
+  return { modifiedCount };
+};
 
-//   return Message.find({
-//     conversation: new Types.ObjectId(conversationId),
-//     isPinned:     true,
-//     isDeleted:    false,
-//   })
-//     .populate('sender', 'name email profileImage role')
-//     .sort({ createdAt: -1 });
-// };
+// Soft deletes a message — only the sender can delete their own message
+const softDeleteMessage = async (messageId: string, myId: string) => {
+  if (!Types.ObjectId.isValid(messageId)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Invalid message ID');
+  }
 
-// export const MessageService = {
-//   sendMessage,
-//   getMessages,
-//   markAllAsRead,
-//   togglePin,
-//   deleteMessage,
-//   getPinnedMessages,
-// };
+  const message = await Message.findById(messageId);
+  if (!message) {
+    throw new ApiError(StatusCodes.NOT_FOUND, 'Message not found');
+  }
+
+  if (message.sender.toString() !== myId) {
+    throw new ApiError(StatusCodes.FORBIDDEN, 'You can only delete your own messages');
+  }
+
+  if (message.isDeleted) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, 'Message already deleted');
+  }
+
+  message.isDeleted  = true;
+  message.content    = 'This message was deleted';
+  message.attachment = null;
+  await message.save();
+
+  return { deleted: true, messageId };
+};
+
+export const MessageService = {
+  sendMessage,
+  getMessages,
+  markConversationSeen,
+  softDeleteMessage,
+};

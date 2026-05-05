@@ -14,6 +14,8 @@ import { DocumentRoutes } from "../modules/document/document.route";
 import { BookingRoutes } from "../modules/booking/booking.route";
 import { StripeRoutes } from "../modules/stripe/stripe.route";
 import { EarningRoutes } from "../modules/earning/earning.route";
+import { ConversationRoutes } from "../modules/conversation/conversation.route";
+import { MessageRoutes } from "../modules/message/message.route";
 
 
 
@@ -45,6 +47,10 @@ router.use("/booking", BookingRoutes)
 router.use("/stripe", StripeRoutes)
 
 router.use('/earnings', EarningRoutes);
+
+router.use('/conversation', ConversationRoutes);
+
+router.use('/message', MessageRoutes);
 
 export default router;
 

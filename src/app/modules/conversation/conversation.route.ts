@@ -1,34 +1,31 @@
-// import express           from 'express';
-// import { checkAuth }     from '../../middlewares/checkAuth';
-// import { USER_ROLES }    from '../../../enums/user';
-// import { ConversationController } from './conversation.controller';
+import express         from 'express';
+import { checkAuth }   from '../../middlewares/checkAuth';
+import validateRequest from '../../middlewares/validateRequest';
+import { USER_ROLES }  from '../../../enums/user';
+import { ConversationController } from './conversation.controller';
+import { ConversationValidation } from './conversation.validation';
 
-// const router = express.Router();
+const router = express.Router();
 
-// // ── IMPORTANT: specific routes BEFORE param routes ───────────────────────────
-// // /all before /:id — otherwise "all" is treated as an :id param
-// router.get(
-//   '/all',
-//   checkAuth(USER_ROLES.ADMIN),
-//   ConversationController.getAllConversations,
-// );
+const auth = checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER);
 
-// router.get(
-//   '/my',
-//   checkAuth(USER_ROLES.CLIENT, USER_ROLES.PROVIDER, USER_ROLES.ADMIN),
-//   ConversationController.getMyConversations,
-// );
+// search-users BEFORE /:id to avoid param collision
+router.get('/search-users', auth, ConversationController.searchUsersToMessage);
 
-// router.post(
-//   '/start',
-//   checkAuth(USER_ROLES.CLIENT, USER_ROLES.PROVIDER, USER_ROLES.ADMIN),
-//   ConversationController.startConversation,
-// );
+router.post(
+  '/',
+  auth,
+  validateRequest(ConversationValidation.startConversationSchema),
+  ConversationController.startConversation,
+);
 
-// router.get(
-//   '/:id',
-//   checkAuth(USER_ROLES.CLIENT, USER_ROLES.PROVIDER, USER_ROLES.ADMIN),
-//   ConversationController.getSingleConversation,
-// );
+router.get('/', auth, ConversationController.getMyInbox);
 
-// export const ConversationRoutes = router;
+router.get(
+  '/:id',
+  auth,
+  validateRequest(ConversationValidation.conversationParamSchema),
+  ConversationController.getSingleConversation,
+);
+
+export const ConversationRoutes = router;

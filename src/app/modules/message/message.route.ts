@@ -1,68 +1,43 @@
-// import express          from 'express';
-// import { checkAuth }    from '../../middlewares/checkAuth';
-// import validateRequest  from '../../middlewares/validateRequest';
-// import fileUploadHandler from '../../middlewares/fileUploadHandler';
-// import { USER_ROLES }   from '../../../enums/user';
-// import { MessageController } from './message.controller';
-// import { MessageValidation } from './message.validation';
+import express            from 'express';
+import { checkAuth }      from '../../middlewares/checkAuth';
+import validateRequest    from '../../middlewares/validateRequest';
+import fileUploadHandler  from '../../middlewares/fileUploadHandler';
+import { USER_ROLES }     from '../../../enums/user';
+import { MessageController }  from './message.controller';
+import { MessageValidation }  from './message.validation';
 
-// const router = express.Router();
+const router = express.Router();
 
-// const auth = checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER, USER_ROLES.ADMIN);
+const auth = checkAuth(USER_ROLES.CLIENT, USER_ROLES.CAREGIVER);
 
-// // ⚠️ ROUTE ORDER IS CRITICAL:
-// // /read-all/:conversationId  MUST be before  /:conversationId
-// // /pinned endpoint           MUST be before  /:id
-// // Otherwise Express matches "read-all" as a message :id param
+router.post(
+  '/',
+  auth,
+  fileUploadHandler,
+  validateRequest(MessageValidation.sendMessageSchema),
+  MessageController.sendMessage,
+);
 
-// // ── POST   /api/v1/message ────────────────────────────────────────────────────
-// router.post(
-//   '/',
-//   auth,
-//   fileUploadHandler,
-//   validateRequest(MessageValidation.sendMessageSchema),
-//   MessageController.sendMessage,
-// );
+// /:conversationId/seen BEFORE /:conversationId to avoid param conflict
+router.patch(
+  '/:conversationId/seen',
+  auth,
+  validateRequest(MessageValidation.seenSchema),
+  MessageController.markConversationSeen,
+);
 
-// // ── PATCH  /api/v1/message/read-all/:conversationId ──────────────────────────
-// // ⚠️ BEFORE /:id — "read-all" must not be caught as :id
-// router.patch(
-//   '/read-all/:conversationId',
-//   auth,
-//   validateRequest(MessageValidation.markAsReadSchema),
-//   MessageController.markAllAsRead,
-// );
+router.get(
+  '/:conversationId',
+  auth,
+  validateRequest(MessageValidation.getMessagesSchema),
+  MessageController.getMessages,
+);
 
-// // ── GET    /api/v1/message/:conversationId/pinned ─────────────────────────────
-// // ⚠️ BEFORE /:conversationId alone
-// router.get(
-//   '/:conversationId/pinned',
-//   auth,
-//   MessageController.getPinnedMessages,
-// );
+router.delete(
+  '/:messageId',
+  auth,
+  validateRequest(MessageValidation.messageIdSchema),
+  MessageController.softDeleteMessage,
+);
 
-// // ── GET    /api/v1/message/:conversationId ────────────────────────────────────
-// router.get(
-//   '/:conversationId',
-//   auth,
-//   validateRequest(MessageValidation.getMessagesSchema),
-//   MessageController.getMessages,
-// );
-
-// // ── PATCH  /api/v1/message/:id/pin ────────────────────────────────────────────
-// router.patch(
-//   '/:id/pin',
-//   auth,
-//   validateRequest(MessageValidation.messageIdSchema),
-//   MessageController.togglePin,
-// );
-
-// // ── DELETE /api/v1/message/:id ────────────────────────────────────────────────
-// router.delete(
-//   '/:id',
-//   auth,
-//   validateRequest(MessageValidation.messageIdSchema),
-//   MessageController.deleteMessage,
-// );
-
-// export const MessageRoutes = router;
+export const MessageRoutes = router;
