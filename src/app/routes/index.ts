@@ -16,6 +16,7 @@ import { StripeRoutes } from "../modules/stripe/stripe.route";
 import { EarningRoutes } from "../modules/earning/earning.route";
 import { ConversationRoutes } from "../modules/conversation/conversation.route";
 import { MessageRoutes } from "../modules/message/message.route";
+import { ReviewRoutes } from "../modules/review/review.route";
 
 
 
@@ -26,7 +27,6 @@ router.use("/auth", AuthRoutes)
 
 router.use("/user", UserRoutes)
 
-// router.use("/message", MessageRoutes)
 
 router.use("/notification", NotificationRoutes)
 
@@ -51,6 +51,8 @@ router.use('/earnings', EarningRoutes);
 router.use('/conversation', ConversationRoutes);
 
 router.use('/message', MessageRoutes);
+
+router.use('/review', ReviewRoutes)
 
 export default router;
 
