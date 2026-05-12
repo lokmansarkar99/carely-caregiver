@@ -17,6 +17,8 @@ import { EarningRoutes } from "../modules/earning/earning.route";
 import { ConversationRoutes } from "../modules/conversation/conversation.route";
 import { MessageRoutes } from "../modules/message/message.route";
 import { ReviewRoutes } from "../modules/review/review.route";
+import { AdminRoutes } from "../modules/admin/admin.route";
+import { CmsRoutes } from "../modules/cms/cms.route";
 
 
 
@@ -52,7 +54,10 @@ router.use('/conversation', ConversationRoutes);
 
 router.use('/message', MessageRoutes);
 
-router.use('/review', ReviewRoutes)
+
+router.use("/admin", AdminRoutes)
+
+router.use('/cms', CmsRoutes)
 
 export default router;
 

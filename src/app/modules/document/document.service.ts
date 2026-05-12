@@ -6,6 +6,9 @@ import { DOCUMENT_TYPE, DOCUMENT_STATUS } from '../../../enums/document';
 import { NOTIFICATION_TYPE, REFERENCE_MODEL } from '../../../enums/notification';
 import { Notification } from '../notification/notification.model';
 import { CaregiverProfile } from '../caregiver-profile/caregiver-profile.model';
+import { User } from '../user/user.model';
+import { emailHelper } from '../../../helpers/emailHelper';
+import { emailTemplate } from '../../../shared/emailTemplate';
 import { getSingleFilePath, IFolderName } from "../../../shared/getFilePath"
 import unlinkFile from '../../../shared/unLinkFIle';
 
@@ -179,6 +182,15 @@ const approveDocument = async (documentId: string, adminId: string) => {
     referenceModel: REFERENCE_MODEL.CAREGIVER_DOCUMENT,
   });
 
+  const user = await User.findById(document.caregiver);
+  if (user) {
+    emailHelper.sendEmail(emailTemplate.documentVerified({
+      name: user.name,
+      email: user.email,
+      documentType: document.documentType.replace(/_/g, ' '),
+    }));
+  }
+
   return document;
 };
 
@@ -208,6 +220,16 @@ const rejectDocument = async (documentId: string, rejectionReason: string) => {
     referenceId: document._id,
     referenceModel: REFERENCE_MODEL.CAREGIVER_DOCUMENT,
   });
+
+  const user = await User.findById(document.caregiver);
+  if (user) {
+    emailHelper.sendEmail(emailTemplate.documentRejected({
+      name: user.name,
+      email: user.email,
+      documentType: document.documentType.replace(/_/g, ' '),
+      reason: rejectionReason,
+    }));
+  }
 
   return document;
 };

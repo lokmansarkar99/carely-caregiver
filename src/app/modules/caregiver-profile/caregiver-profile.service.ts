@@ -5,6 +5,8 @@ import { VERIFICATION_STATUS } from '../../../enums/user';
 import { QueryBuilder } from '../../buillder/queryBuilder';
 import { User } from '../user/user.model';
 import { CaregiverProfile } from './caregiver-profile.model';
+import { emailHelper } from '../../../helpers/emailHelper';
+import { emailTemplate } from '../../../shared/emailTemplate';
 import {
   IAdminVerifyPayload,
   ISetupProfilePayload,
@@ -219,6 +221,19 @@ const adminVerifyCaregiver = async (id: string, payload: IAdminVerifyPayload) =>
         verificationStatus: payload.status
     })
   ])
+
+  if (isApproved) {
+    emailHelper.sendEmail(emailTemplate.caregiverApproved({
+      name: (updatedProfile!.user as any).name,
+      email: (updatedProfile!.user as any).email
+    }));
+  } else if (payload.status === VERIFICATION_STATUS.REJECTED) {
+    emailHelper.sendEmail(emailTemplate.caregiverRejected({
+      name: (updatedProfile!.user as any).name,
+      email: (updatedProfile!.user as any).email,
+      reason: (payload as any).reason
+    }));
+  }
 
   return updatedProfile
 };

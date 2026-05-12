@@ -14,6 +14,8 @@ import stripe from '../../../config/stripe.config';
 import { QueryBuilder } from '../../buillder/queryBuilder';
 import { NOTIFICATION_TYPE } from '../../../enums/notification';
 import { BOOKING_STATUS, CANCELLED_BY, PAYMENT_STATUS, SHIFT_TYPE } from './booking.interface';
+import { emailHelper } from '../../../helpers/emailHelper';
+import { emailTemplate } from '../../../shared/emailTemplate';
 
 const SERVICE_FEE_RATE = 0.0893;
 const HOLD_DURATION_MS = 30 * 60 * 1000;
@@ -32,6 +34,28 @@ const calcHours = (start: string, end: string): number => {
   const [sh, sm] = start.split(':').map(Number);
   const [eh, em] = end.split(':').map(Number);
   return (eh * 60 + em - (sh * 60 + sm)) / 60;
+};
+
+const getEmailPayload = async (bookingId: string) => {
+  const b = await Booking.findById(bookingId)
+    .populate('client', 'name email')
+    .populate('caregiver', 'name email')
+    .populate('careRecipient', 'fullName')
+    .populate('serviceCategory', 'name');
+    
+  return {
+    bookingId: b!._id.toString(),
+    clientName: (b!.client as any).name,
+    clientEmail: (b!.client as any).email,
+    caregiverName: (b!.caregiver as any).name,
+    caregiverEmail: (b!.caregiver as any).email,
+    serviceType: (b!.serviceCategory as any).name,
+    bookingDate: b!.date.toDateString(),
+    shift: b!.shift,
+    careRecipientName: (b!.careRecipient as any).fullName,
+    baseRate: b!.basePrice,
+    totalAmount: b!.totalAmount,
+  };
 };
 
 const notifyAndEmit = async (
@@ -217,6 +241,9 @@ const createBooking = async (
       BOOKING_STATUS.PENDING,
     );
 
+    const payload = await getEmailPayload(booking._id.toString());
+    emailHelper.sendEmail(emailTemplate.bookingRequest({ ...payload, specialInstructions: instructions ?? undefined }));
+
     return booking;
   } catch (err) {
     await session.abortTransaction();
@@ -340,6 +367,10 @@ const acceptBooking = async (bookingId: string, caregiverUser: JwtPayload) => {
     ),
   ]);
 
+  const payload = await getEmailPayload(booking._id.toString());
+  emailHelper.sendEmail(emailTemplate.bookingConfirmedClient(payload));
+  emailHelper.sendEmail(emailTemplate.bookingConfirmedCaregiver(payload));
+
   return booking;
 };
 
@@ -388,6 +419,9 @@ const declineBooking = async (
     booking._id.toString(),
     BOOKING_STATUS.DECLINED,
   );
+
+  const payload = await getEmailPayload(booking._id.toString());
+  emailHelper.sendEmail(emailTemplate.bookingDeclined({ ...payload, declineReason }));
 
   return booking;
 };
@@ -478,6 +512,10 @@ const completeBooking = async (bookingId: string, caregiverUser: JwtPayload) => 
     booking._id.toString(),
     BOOKING_STATUS.COMPLETED,
   );
+
+  const payload = await getEmailPayload(booking._id.toString());
+  emailHelper.sendEmail(emailTemplate.bookingCompletedClient(payload));
+  emailHelper.sendEmail(emailTemplate.bookingCompletedCaregiver(payload));
 
   return booking;
 };
@@ -581,6 +619,9 @@ export const autoReleaseExpiredBookings = async () => {
       booking._id.toString(),
       BOOKING_STATUS.AUTO_RELEASED,
     );
+
+    const payload = await getEmailPayload(booking._id.toString());
+    emailHelper.sendEmail(emailTemplate.bookingAutoReleased(payload));
   }
 };
 

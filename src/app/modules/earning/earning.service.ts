@@ -6,6 +6,8 @@ import Earning from './earning.model';
 import { CaregiverProfile } from '../caregiver-profile/caregiver-profile.model';
 import { EARNING_STATUS } from './earning.interface';
 import { QueryBuilder } from '../../buillder/queryBuilder';
+import { emailHelper } from '../../../helpers/emailHelper';
+import { emailTemplate } from '../../../shared/emailTemplate';
 
 const getWeekBounds = () => {
   const now = new Date();
@@ -149,7 +151,10 @@ const releaseEarning = async (
   payoutMethod?: string,
 ) => {
   // Admin releases a PENDING earning to PAID and records payout reference
-  const earning = await Earning.findById(earningId);
+  const earning = await Earning.findById(earningId).populate('caregiver', 'name email').populate({
+    path: 'booking',
+    populate: { path: 'client', select: 'name' }
+  });
   if (!earning) throw new ApiError(httpStatus.NOT_FOUND, 'Earning not found');
   if (earning.status === EARNING_STATUS.PAID) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Earning has already been paid out');
@@ -160,6 +165,15 @@ const releaseEarning = async (
   earning.payoutReference = payoutReference;
   if (payoutMethod) earning.payoutMethod = payoutMethod;
   await earning.save();
+
+  emailHelper.sendEmail(emailTemplate.paymentReleased({
+    name: (earning.caregiver as any).name,
+    email: (earning.caregiver as any).email,
+    bookingId: (earning.booking as any)._id.toString(),
+    clientName: ((earning.booking as any).client as any).name,
+    bookingDate: new Date((earning.booking as any).date).toDateString(),
+    amount: earning.amount
+  }));
 
   return earning;
 };
