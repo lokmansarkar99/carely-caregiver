@@ -54,7 +54,7 @@ router.use('/conversation', ConversationRoutes);
 
 router.use('/message', MessageRoutes);
 
-
+router.use('/review', ReviewRoutes)
 router.use("/admin", AdminRoutes)
 
 router.use('/cms', CmsRoutes)
